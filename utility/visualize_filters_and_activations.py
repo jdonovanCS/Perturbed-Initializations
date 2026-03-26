@@ -27,7 +27,7 @@ def run():
     # log variables to config
     run_id = args.run_id
     api = wandb.Api()
-    run = api.run("jdonovan/novel-feature-detectors/" + run_id)
+    run = api.run("jdonovan/perturbed-initializations/" + run_id)
     helper.config['experiment_type'] = 'visualization'
     filters = {}
     print(run.config)
@@ -38,7 +38,7 @@ def run():
 
 
     # narrow down exactly which run we want the filters from
-    runs = api.runs(path="jdonovan/novel-feature-detectors", filters=filters, order="created_at", per_page=10)
+    runs = api.runs(path="jdonovan/perturbed-initializations", filters=filters, order="created_at", per_page=10)
     count = 0
     spec_run_num = 0
     for r in runs:

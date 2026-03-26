@@ -2,7 +2,7 @@ import wandb
 import numpy as np
 
 api = wandb.Api(timeout=30)
-runs = api.runs(path="jdonovan/novel-feature-detectors", filters={"config.experiment_name": {"$in": ["relative diversity", "absolute diversity", "cosine diversity"]}, "config.experiment_type": "evolution"})
+runs = api.runs(path="jdonovan/perturbed-initializations", filters={"config.experiment_name": {"$in": ["relative diversity", "absolute diversity", "cosine diversity"]}, "config.experiment_type": "evolution"})
 
 rel_div_vals = []
 abs_div_vals = []

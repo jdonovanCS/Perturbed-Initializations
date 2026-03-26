@@ -225,7 +225,7 @@ if __name__ == "__main__":
     # suggestions = []
     for i in range(10):
         wandb.finish()
-        wandb.init(project="novel-feature-detectors")
+        wandb.init(project="perturbed-initializations")
         train_vgg16(data_module)
         # suggestions.append(train_vgg16(data_module))
     # print(suggestions)

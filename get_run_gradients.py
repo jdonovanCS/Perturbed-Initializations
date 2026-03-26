@@ -39,9 +39,9 @@ def run():
     for i in tqdm(range(len(args.run_ids_0))):
         run_id = args.run_ids_0[i]
         api = wandb.Api()
-        # runs = api.runs("jdonovan/novel-feature-detectors", filters={"id": {"$in": [args.run_ids_0]}})
+        # runs = api.runs("jdonovan/perturbed-initializations", filters={"id": {"$in": [args.run_ids_0]}})
         # print(len(runs))
-        run = api.run("jdonovan/novel-feature-detectors/" + run_id)
+        run = api.run("jdonovan/perturbed-initializations/" + run_id)
         # search = 'val_acc' if not args.diversity else 'val_novelty'
         hist = run.scan_history()
         history = [row for row in hist]
@@ -174,7 +174,7 @@ def run():
     # for i in range(len(args.run_ids_1)):
     #     run_id = args.run_ids_1[i]
     #     api = wandb.Api()
-    #     run = api.run("jdonovan/novel-feature-detectors/" + run_id)
+    #     run = api.run("jdonovan/perturbed-initializations/" + run_id)
     #     search = 'val_acc' if not args.diversity else 'val_novelty'
     #     history = run.scan_history(keys=[search])
     #     values = [row[search] for row in history if not np.isnan(row[search])]

@@ -195,7 +195,7 @@ def import_trained_filters():
     
     for filename in data['trained_models']:
         
-        name = filename.split("trained")[-1].split('novel-feature-detectors')[0].split('_')[1][1:]
+        name = filename.split("trained")[-1].split('perturbed-initializations')[0].split('_')[1][1:]
         if name not in trained_filters:
             trained_filters[name] = []
         

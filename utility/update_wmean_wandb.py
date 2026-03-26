@@ -12,7 +12,7 @@ import csv
 
 # run_id = args.run_id
 api = wandb.Api()
-runs = api.runs(path="jdonovan/novel-feature-detectors", filters={"config.layerwise_diversity_op": "w_mean"})
+runs = api.runs(path="jdonovan/perturbed-initializations", filters={"config.layerwise_diversity_op": "w_mean"})
 
 def confirm(prompt=None, resp=False):
     """prompts for yes or no response from the user. Returns True for yes and
@@ -61,7 +61,7 @@ def confirm(prompt=None, resp=False):
 # print(data)
 # table = wandb.Table(columns = data[0], data=data[1:])
 
-# run = api.run(path='jdonovan/novel-feature-detectors/3doqm1v1')
+# run = api.run(path='jdonovan/perturbed-initializations/3doqm1v1')
 # for artifact in run.logged_artifacts():
 #     if artifact.type == "model":
 #         artifact.delete(delete_aliases=True)
@@ -70,7 +70,7 @@ def confirm(prompt=None, resp=False):
 #         print(dir(artifact._files))
 #         print((artifact.manifest.to_manifest_json()))
 #         artifact.add(table, "testing_update")
-# artifact = api.artifact('jdonovan/novel-feature-detectors/run-3doqm1v1-history:v0', type='wandb-history')
+# artifact = api.artifact('jdonovan/perturbed-initializations/run-3doqm1v1-history:v0', type='wandb-history')
 # artifact.delete()
 
 
@@ -82,7 +82,7 @@ for run in runs:
         if ('val_novelty' not in step.keys()) or (step['val_novelty'] and step['val_novelty'] > .16):
             break
     else:
-        this_run = wandb.init(project="novel-feature-detectors")
+        this_run = wandb.init(project="perturbed-initializations")
         wandb.config.update(run.config)
         for step in history:
             if step['val_novelty'] and step['val_novelty']<.16:
@@ -93,10 +93,10 @@ for run in runs:
         for a in logged_artifacts:
             if a.type == 'model':
                 print(a.name)
-                this_run.use_artifact("jdonovan/novel-feature-detectors/"+a.name)
+                this_run.use_artifact("jdonovan/perturbed-initializations/"+a.name)
         for a in used_artifacts:
             if a.type == 'model':
-                this_run.use_artifact("jdonovan/novel-feature-detectors/"+a.name)
+                this_run.use_artifact("jdonovan/perturbed-initializations/"+a.name)
         wandb.finish()
     # print([type(row['val_novelty']) for row in history])
     # values = [row['val_novelty'] for row in history]

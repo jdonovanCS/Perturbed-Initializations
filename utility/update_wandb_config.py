@@ -11,7 +11,7 @@ args = parser.parse_args()
 for run in args.run_ids:
     run_id = run
     api = wandb.Api()
-    run = api.run("jdonovan/novel-feature-detectors/" + run_id)
+    run = api.run("jdonovan/perturbed-initializations/" + run_id)
 
     def confirm(prompt=None, resp=False):
         """prompts for yes or no response from the user. Returns True for yes and
@@ -66,7 +66,7 @@ for run in args.run_ids:
         value = str(args.value)
 
     if args.param.lower() == "state":
-        my_project_name = "novel-feature-detectors"
+        my_project_name = "perturbed-initializations"
         my_id = run_id
         wandb.init(project=my_project_name, id=my_id, resume="must")
         wandb.finish()

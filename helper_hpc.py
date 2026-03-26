@@ -790,7 +790,7 @@ def run(seed=True, rank=0):
     # if glob_rank > -1:
         if torch.cuda.is_available():
             force_cudnn_initialization()
-        wandb.init(project="novel-feature-detectors") # group='DDP'
+        wandb.init(project="perturbed-initializations") # group='DDP'
 
     # warnings.filterwarnings('ignore', category=pl_bolts.utils.  .UnderReviewWarning)
 

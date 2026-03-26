@@ -61,7 +61,7 @@ if args.keys[0] == 'best_individual_fitness':
 
 # Get data from wandb
 api = wandb.Api(timeout=30)
-runs = api.runs("jdonovan/novel-feature-detectors", filters=args.filters)
+runs = api.runs("jdonovan/perturbed-initializations", filters=args.filters)
 # {"$and": [{'created_at': {'$gt': '2023-06-20T20'}}]}
 
 # process and store that data

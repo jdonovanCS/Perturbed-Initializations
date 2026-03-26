@@ -98,7 +98,7 @@ def run():
     else:
         stored_filters=[]
         count = 0
-        path_to_pth = 'trained_models/trained/conv' + str(not args.fixed_conv) + '_e' + args.experiment_name + '_n' + name + "_r" + str(count) + 'g0.pth/novel-feature-detectors/'
+        path_to_pth = 'trained_models/trained/conv' + str(not args.fixed_conv) + '_e' + args.experiment_name + '_n' + name + "_r" + str(count) + 'g0.pth/perturbed-initializations/'
         while os.path.exists(path_to_pth) and len(os.listdir(path_to_pth)) > 0:
             path_to_ckpt = path_to_pth+os.listdir(path_to_pth)[0] + '/checkpoints/'
             for f in os.listdir(path_to_ckpt):
@@ -106,7 +106,7 @@ def run():
                     path_to_ckpt = path_to_ckpt + f
             stored_filters.append(helper.get_weights_from_ckpt(path_to_ckpt))
             count+=1
-            path_to_pth = 'trained_models/trained/conv' + str(not args.fixed_conv) + '_e' + args.experiment_name + '_n' + name + "_r" + str(count) + 'g0.pth/novel-feature-detectors/'
+            path_to_pth = 'trained_models/trained/conv' + str(not args.fixed_conv) + '_e' + args.experiment_name + '_n' + name + "_r" + str(count) + 'g0.pth/perturbed-initializations/'
 
 
     helper.run(seed=False, rank=args.local_rank if args.devices > 0 else 0)

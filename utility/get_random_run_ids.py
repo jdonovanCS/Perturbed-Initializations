@@ -9,8 +9,8 @@ import wandb
 
 # run_id = args.run_id
 api = wandb.Api()
-runs = api.runs(path="jdonovan/novel-feature-detectors", filters={"config.experiment_name": {"$in": ["relative diversity", "absolute diversity", "cosine diversity"]}, "config.experiment_type": "evolution"})#"config.fixed_conv": False, "config.dataset": "cifar10"})#, "config.State": "Crashed", "config.evo": 0, "config.fixed_conv": 0})
-# runs = api.runs('jdonovan/novel-feature-detectors', filters={'created_at': {'$lt': '2023-06-20T20'}})
+runs = api.runs(path="jdonovan/perturbed-initializations", filters={"config.experiment_name": {"$in": ["relative diversity", "absolute diversity", "cosine diversity"]}, "config.experiment_type": "evolution"})#"config.fixed_conv": False, "config.dataset": "cifar10"})#, "config.State": "Crashed", "config.evo": 0, "config.fixed_conv": 0})
+# runs = api.runs('jdonovan/perturbed-initializations', filters={'created_at': {'$lt': '2023-06-20T20'}})
 
 # data = []
 # with open('artifacts/run-um0c4jr0-history-v0/0000.csv', newline='') as csvfile:
@@ -20,7 +20,7 @@ runs = api.runs(path="jdonovan/novel-feature-detectors", filters={"config.experi
 # print(data)
 # table = wandb.Table(columns = data[0], data=data[1:])
 
-# run = api.run(path='jdonovan/novel-feature-detectors/3doqm1v1')
+# run = api.run(path='jdonovan/perturbed-initializations/3doqm1v1')
 # for artifact in run.logged_artifacts():
 #     if artifact.type == "model":
 #         artifact.delete(delete_aliases=True)
@@ -29,7 +29,7 @@ runs = api.runs(path="jdonovan/novel-feature-detectors", filters={"config.experi
 #         print(dir(artifact._files))
 #         print((artifact.manifest.to_manifest_json()))
 #         artifact.add(table, "testing_update")
-# artifact = api.artifact('jdonovan/novel-feature-detectors/run-3doqm1v1-history:v0', type='wandb-history')
+# artifact = api.artifact('jdonovan/perturbed-initializations/run-3doqm1v1-history:v0', type='wandb-history')
 # artifact.delete()
 
 print("{} runs found".format(len(runs)))

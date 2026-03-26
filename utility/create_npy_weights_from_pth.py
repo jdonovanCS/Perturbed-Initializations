@@ -18,9 +18,9 @@ def run():
     for i in range(5):
 
         # for each grab the convolutional filter weights from them
-        for j in range(len(os.listdir('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth/novel-feature-detectors/'.format(i)))):
-            if os.path.exists(os.path.join('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth'.format(i), 'novel-feature-detectors/', os.listdir('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth/novel-feature-detectors/'.format(i))[j], 'checkpoints/epoch=0-step=625.ckpt')):
-                path = os.path.join('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth'.format(i), 'novel-feature-detectors/', os.listdir('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth/novel-feature-detectors/'.format(i))[j], 'checkpoints/epoch=0-step=625.ckpt')
+        for j in range(len(os.listdir('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth/perturbed-initializations/'.format(i)))):
+            if os.path.exists(os.path.join('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth'.format(i), 'perturbed-initializations/', os.listdir('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth/perturbed-initializations/'.format(i))[j], 'checkpoints/epoch=0-step=625.ckpt')):
+                path = os.path.join('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth'.format(i), 'perturbed-initializations/', os.listdir('trained_models/trained/ae_ecifar100_ae_1_1000_normal_r{}.pth/perturbed-initializations/'.format(i))[j], 'checkpoints/epoch=0-step=625.ckpt')
         m = AE.load_from_checkpoint(path)
 
         with torch.no_grad():

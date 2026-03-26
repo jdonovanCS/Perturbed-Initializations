@@ -244,7 +244,7 @@ def func2():
     
     return
 
-    n = Net.load_from_checkpoint('D:/Learning/UVM/Research Projects/Novel-Feature-Detector/trained_models/trained/convTrue_emutate weighted 750_nmutate-only_r0_g0.pth/novel-feature-detectors/0z402yzx/checkpoints/epoch=255-step=160000.ckpt')
+    n = Net.load_from_checkpoint('D:/Learning/UVM/Research Projects/Novel-Feature-Detector/trained_models/trained/convTrue_emutate weighted 750_nmutate-only_r0_g0.pth/perturbed-initializations/0z402yzx/checkpoints/epoch=255-step=160000.ckpt')
 
     num_diffs_by_val = 0
     layer_diffs = []

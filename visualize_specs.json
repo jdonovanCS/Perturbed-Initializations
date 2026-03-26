@@ -1,6 +1,6 @@
 {
     "trained_models": [
-        "C:\\Users\\RDITLJTD\\Learning\\UVM\\Research Projects\\Novel-Feature-Detector\\trained_models\\trained\\convTrue_emutate weighted 750_nmutate-only_pruned_r4_g0.pth\\novel-feature-detectors\\z558fe2w\\checkpoints\\epoch=255-step=160000.ckpt"
+        "C:\\Users\\RDITLJTD\\Learning\\UVM\\Research Projects\\Novel-Feature-Detector\\trained_models\\trained\\convTrue_emutate weighted 750_nmutate-only_pruned_r4_g0.pth\\perturbed-initializations\\z558fe2w\\checkpoints\\epoch=255-step=160000.ckpt"
     ],
     "filenames": [
         "C:\\Users\\RDITLJTD\\Learning\\UVM\\Research Projects\\Novel-Feature-Detector\\output\\mutate weighted 750\\solutions_over_time_mutate-only.npy",
