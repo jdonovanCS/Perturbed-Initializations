@@ -1,0 +1,7 @@
+{
+    "run_ids_0": [],
+    // mutate weighted 2000 only last layer vgg16
+    "run_ids_1": ["ue8ijeb2", "opbhcnkx", "dv0usyi9", "6oy6jnu9", "43xdcrou", "xcd5yk5g", "wjb1z8h3", "v58oy7ew", "usz33cxb", "pzy7aao1", 
+                    "p8t70uak", "opmpogd3", "njfnmx15", "kuzmu4nr", "k7ew1196", "juupfztg", "ia7gxh12", "hard243e", "d91vfqfq", "cxulgc4r", 
+                    "cx5tnauy", "c16tmeky", "bnyd2x4z", "b0su9ent", "98oqdla4", "809vtono", "6v868xw3", "3iinc18z", "2i3t793u", "1slc3k62"]
+}
