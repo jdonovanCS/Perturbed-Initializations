@@ -135,8 +135,14 @@ class Net(pl.LightningModule):
                 cov_matrix = self.get_activation_covariance(torch.cat(self.activations_after_nonlineararity[i]))
                 C = cov_matrix.shape[0]
                 off_diag = cov_matrix[~torch.eye(C, dtype=bool)]
-                mean_cov = off_diag.mean().item()
+                # needed to absolute value in here in case of positive and negative correlations canceling each other out.
+                mean_cov = off_diag.abs().mean().item()
                 self.log('activation_map_covariance{}'.format(i+1), mean_cov)
+                v = torch.diag(cov_matrix)
+                stddev = torch.sqrt(v + 1e-8)
+                corr_matrix = cov_matrix / stddev[:, None] / stddev[None, :]
+                off_diag_corr = corr_matrix[~torch.eye(C, dtype=bool)].abs().mean().item()
+                self.log('activation_map_correlation{}'.format(i+1), off_diag_corr)
         if self.log_activations:
             for i in range(len(self.conv_layers)):
                 cosine_dist_matrix = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlineararity[i]))
