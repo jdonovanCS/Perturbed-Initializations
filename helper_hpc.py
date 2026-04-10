@@ -113,9 +113,9 @@ def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, 
         callbacks=[pl.callbacks.ModelCheckpoint(every_n_epochs=save_interval,save_top_k=-1)]
 
     if not scaled:
-        wandb_logger = WandbLogger(log_model=True, log_graph=False)
+        wandb_logger = WandbLogger(log_model=False, log_graph=False)
     else:
-        wandb_logger = WandbLogger(log_model=True, log_graph=False)
+        wandb_logger = WandbLogger(log_model=False, log_graph=False)
     print((torch.cuda.device_count()))
     accelerator = "cpu" if torch.cuda.device_count() < 1 else 'gpu'
     # trainer = pl.Trainer(max_epochs=epochs, default_root_dir=save_path, logger=wandb_logger, check_val_every_n_epoch=val_interval, accelerator="gpu", gpus=torch.cuda.device_count(), strategy='dp')
@@ -373,20 +373,30 @@ def cosine_dist(u:np.ndarray, v:np.ndarray):
 def get_activation_covariance(activations):
 
     B, C, H, W = activations.shape
+    N = H * W
 
     # Reshape
-    fm = activations.view(B, C, -1)
+    fm = activations.view(B, C, N)
+    
+    # Need to perform centering here and rerun experiments
+    fm_centered = fm - fm.mean(dim=2, keepdim=True)
 
     cov_matrices = []
-    for b in range(B):
-        f = fm[b]
-        cov = f@f.T / (f.shape[1]-1)
-        cov_matrices.append(cov)
+    # can use this for efficiency instead of loop
+    cov_matrices = torch.bmm(fm_centered, fm_centered.transpose(1, 2)) / (N-1)
+    # # loop through each feature map in batch of images
+    # for b in range(B):
+    #     f = fm[b]
+    #     # calculate covariance
+    #     cov = f@f.T / (f.shape[1]-1)
+    #     cov_matrices.append(cov)
 
-    return torch.stack(cov_matrices).mean(dim=0)
+    # also don't need to torch.stack the cov_matrices
+    return cov_matrices.mean(dim=0)
 
 def get_activation_cosine_distance(activations):
     B, C, H, W = activations.shape
+    # reshape into B,C,HW
     fm = activations.view(B, C, -1)
 
     fm_norm = F.normalize(fm, p=2, dim=2)
@@ -395,6 +405,7 @@ def get_activation_cosine_distance(activations):
     for b in range(B):
         f = fm_norm[b]
         sim = f @ f.T
+        
         dist = 1 - sim
         cosine_dist_matrices.append(dist)
     
@@ -600,6 +611,7 @@ def choose_mutate_index(filters, weighted_mut=False, weights_for_mut=None):
         # print(rand_filter)
         # print(selected_layer, selected_dims)
     elif weighted_mut and weights_for_mut:
+        # total filters = sum([number of weights in layer i * probability for layer i for each layer i])
         total_filters = int(sum([len(filters[i].flatten())*weights_for_mut[i] for i in range(len(filters))]))
         rand_layer = random.randint(0, total_filters-1)
         count = 0
