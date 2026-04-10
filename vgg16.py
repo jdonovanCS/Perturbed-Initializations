@@ -42,6 +42,9 @@ class Net(pl.LightningModule):
 
     def get_activation(self, name):
         def hook(model, input, output):
+            # trying out detach to see if it allows for 
+            # computation without CUDA out of memory
+            # self.activations[name].append(output.detach().cpu())
             self.activations[name].append(output)
         return hook
 
@@ -88,6 +91,11 @@ class Net(pl.LightningModule):
                 off_diag = cov_matrix[~torch.eye(C, dtype=bool)]
                 mean_cov = off_diag.mean().item()
                 self.log('activation_map_covariance{}'.format(i+1), mean_cov)
+                v = torch.diag(cov_matrix)
+                stddev = torch.sqrt(v + 1e-8)
+                corr_matrix = cov_matrix / stddev[:, None] / stddev[None, :]
+                off_diag_corr = corr_matrix[~torch.eye(C, dtype=bool)].abs().mean().item()
+                self.log('activation_map_correlation{}'.format(i+1), off_diag_corr)
         if self.log_activations:
             for i in self.activations:
                 cosine_dist_matrix = self.get_activation_cosine_distance(torch.cat(self.activations[i]))
@@ -98,7 +106,9 @@ class Net(pl.LightningModule):
         batch_dictionary={
 	            "train_loss": loss, "train_acc": self.train_acc, 'loss': loss
 	        }
-                
+        if self.log_activations:
+            for i in range(len(self.activations)):
+                self.activations[i] = []
         return batch_dictionary
 
     def training_epoch_end(self,outputs):
@@ -110,6 +120,12 @@ class Net(pl.LightningModule):
     def validation_step(self, val_batch, batch_idx):
         with torch.no_grad():
             x, y = val_batch
+            
+            # I think the hook still happens in validation,
+            # but I'm not clearing it out causing CUDA OOM(?)
+            if self.log_activations:
+                for i in range(len(self.activations)):
+                    self.activations[i] = []
             
             logits = self.forward(x)
 
