@@ -9,25 +9,15 @@ from model import Model
 import copy
 
 
-parser=argparse.ArgumentParser(description="Process some input files")
+parser=argparse.ArgumentParser(description="Process some input params")
 parser.add_argument('--experiment_name', help='experiment name for saving and data related to filters generated', default='')
 parser.add_argument('--population_size', help='number of filters to generate', type=int, default=50)
 parser.add_argument('--technique', help='uniform, normal, gram-schmidt, or mutate-only technique', type=str, default='uniform')
 parser.add_argument('--network', help="specify network to generate filters for (vgg16, conv6, etc.)", type=str, default='conv6')
-parser.add_argument('--mr', help="mutation rate to use if using mutation-only", default=1.0, type=float)
-parser.add_argument('--broad_mut', help="use broad muation", default=False, action="store_true")
-parser.add_argument('--num_mutations', help='how many times to run the mutation function on the filters', default=500, type=int)
-parser.add_argument('--gain', help='optional scaling factor for some of the technqiues', default=1.0, type=float)
-parser.add_argument('--weighted_mut', help="would we like for the mutation function to weight its selection based on number of filters in each layer", default=False, action='store_true')
-parser.add_argument('--weights_for_mut', help='specify weights for each layer during mutation', nargs='+', default=None, type=float)
-parser.add_argument('--ensure_mut_at_each_layer', help='use this option to ensure that at least 1 filter at each layer is perturbed', default=False, action='store_true')
+
 # parser.add_argument('--batch_size', help='Number of images to use for novelty metric, only 1 batch used', default=64, type=int)
 # parser.add_argument('--dataset', help='which dataset should be used for novelty metric, choices are: random, cifar-10', default='random')
 args = parser.parse_args()
-
-if args.weights_for_mut and (sum(args.weights_for_mut) < 0.99999999 or sum(args.weights_for_mut) > 1.000000001 or len(args.weights_for_mut) not in [6,13]):
-    print('weights must add to 1.0. Current sum is: ', sum(args.weights_for_mut))
-    exit()
 
 def run():
     torch.multiprocessing.freeze_support()
@@ -52,8 +42,6 @@ def run():
     population = []
     helper.config['experiment_name'] = experiment_name
 
-    mutated_filter_indices = []
-
     for i in tqdm(range(population_size)): #while len(population) < population_size:
         model = Model()
         if args.network == 'vgg16':
@@ -61,11 +49,7 @@ def run():
         elif args.network == 'conv6':
             net = helper.Net()
         # model.fitness =  net.get_fitness(net_input)
-        if args.technique == 'gram-schmidt':
-            model.filters = net.get_filters(numpy=True)
-            new_filters = helper.gram_shmidt_orthonormalize(model.filters)
-            net.set_filters = new_filters
-        elif  'xavier-normal' in args.technique:
+        if  'xavier-normal' in args.technique:
             helper.xavier_normal(net, args.gain)
         elif 'xavier' in args.technique:
             helper.xavier_uniform(net, args.gain)
@@ -77,16 +61,7 @@ def run():
             helper.normalize(net)
         elif 'default uniform' in args.technique:
             helper.default_uniform(net)
-        if 'mutate-only' in args.technique:
-            model.filters = copy.deepcopy(net.get_filters())
-            mutated_filter_indices.append([])
-            for k in range(args.num_mutations):
-                if args.ensure_mut_at_each_layer and k<len(model.filters):
-                    mutated_filter_indices[i].append(helper.choose_mutate_index_from_layer(model.filters, k))
-                else:
-                    mutated_filter_indices[i].append(helper.choose_mutate_index(model.filters, args.weighted_mut, args.weights_for_mut))
-                model.filters = helper.mutate(model.filters, args.broad_mut, args.mr, mutated_filter_indices[i][k])
-            net.set_filters(copy.deepcopy(model.filters))
+        
         model.filters = net.get_filters()
         population.append(model)
         # helper.wandb.log({'gen': 0, 'individual': i, 'fitness': model.fitness})
@@ -107,14 +82,6 @@ def run():
     for k,v in sol_dict.items():
         with open('output/' + experiment_name + '/solutions_over_time_{}.npy'.format(k), 'wb') as f:
             np.save(f, v[::])
-
-    for k,v in sol_dict.items():
-        with open('output/' + experiment_name + '/mutated_filter_indices_{}.npy'.format(k), 'wb') as f:
-            np.save(f, mutated_filter_indices)
-
-    # print(mutated_filter_indices)
-    # with open('output/' + experiment_name + '/random_gen_fitnesses.txt', 'a+') as f:
-    #     f.write(str(fitnesses))
 
     # fitnesses = np.array([fitnesses])
     # cut_off_beginning = 0
