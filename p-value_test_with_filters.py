@@ -19,7 +19,9 @@ project_path_old = "jdonovan/novel-feature-detectors"
 parser=argparse.ArgumentParser(description="Process some input files")
 parser.add_argument('--config_filters', nargs='+', type=str, help="enter config dictionary name and values in format name:[values]")
 parser.add_argument('--config_filters2', nargs='+', type=str, help="enter config filter criteria in format name:[values]")
-parser.add_argument('--val_acc_range', nargs=2, type=int, help='range of values to consider from array of val_acc')
+# parser.add_argument('--val_acc_range', nargs=2, type=int, help='range of values to consider from array of val_acc')
+parser.add_argument('--max', help="get maximum value of metric (True), otherwise get minimum (False), if neither is set summary statistic will be used", type=bool, default=None)
+parser.add_argument('--metric', help='metric to compare in t-test', type=str, default='val_acc')
 parser.add_argument('--diversity', help='run ranksums for diversity instead of accuracy', action='store_true', default=False)
 args = parser.parse_args()
 
@@ -29,8 +31,8 @@ def run():
     
     helper.run(seed=False)
     epoch_range = [0,None]
-    if args.val_acc_range:
-        epoch_range = args.val_acc_range
+    # if args.val_acc_range:
+    #     epoch_range = args.val_acc_range
         
     def is_float_string(s):
         try:
@@ -52,6 +54,7 @@ def run():
         elif all(item.strip().lower() in ["true", "false"] for item in filter_criteria_list):
             filter_criteria_list = [i.lower() == "true" for i in filter_criteria_list]
         filters["config."+str(filter_item).split(":")[0]] = {"$in": filter_criteria_list}
+    filters["summary_metrics."+str(args.metric)] = {"$nin": [None, "null"]}
     print(filters)
     # exit()
     runs = api.runs(
@@ -73,6 +76,7 @@ def run():
         elif all(item.strip().lower() in ["true", "false"] for item in filter_criteria_list):
             filter_criteria_list = [i.lower() == "true" for i in filter_criteria_list]
         filters2["config."+str(filter_item).split(":")[0]] = {"$in": filter_criteria_list}
+    filters2["summary_metrics."+str(args.metric)] = {"$nin": [None, "null"]}
     print(filters2)
     
     runs2 = api.runs(
@@ -87,27 +91,37 @@ def run():
     values_0 = []
     values_1 = []
     
+    values=[]
     print("getting first criteria experiments")
     for r in tqdm(runs):
         run_id = r.id
         api = wandb.Api()
         run = api.run(project_path + "/" + run_id)
-        search = 'val_acc' if not args.diversity else 'val_novelty'
-        history = run.scan_history(keys=[search])
-        values = [row[search] for row in history if not np.isnan(row[search])]
+        search = args.metric
+        if len(values) == 1 or args.max is None:
+            values=[run.summary[search]]
+        else:
+            history = run.scan_history(keys=[search])
+            values = [row[search] for row in history if not np.isnan(row[search])]
         # print(len(values))
-        values_0.extend(values[epoch_range[0]:epoch_range[1]])
+        # values_0.extend(values[epoch_range[0]:epoch_range[1]])
+        values_0.append(min(values) if not args.max else max(values))
 
     print("getting 2nd criteria experiments")
     for r in tqdm(runs2):
         run_id = r.id
         api = wandb.Api()
         run = api.run(project_path + "/" + run_id)
-        search = 'val_acc' if not args.diversity else 'val_novelty'
-        history = run.scan_history(keys=[search])
-        values = [row[search] for row in history if not np.isnan(row[search])]
+        search = args.metric
+        if len(values) == 1 or args.max is None:
+            values=[run.summary[search]]
+        else:    
+            history = run.scan_history(keys=[search])
+            values = [row[search] for row in history if not np.isnan(row[search])]
         # print(len(values))
-        values_1.extend(values[epoch_range[0]: epoch_range[1]])
+        # values_1.extend(values[epoch_range[0]: epoch_range[1]])
+        values_1.append(min(values) if not args.max else max(values))
+
         
     print('num exps in 1:', len(values_0), 'num exps in 2:', len(values_1))
     

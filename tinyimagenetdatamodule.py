@@ -49,7 +49,7 @@ class TinyImageNetDataModule(pl.LightningDataModule):
             self.dataset_train, self.dataset_val = train_dataset, val_dataset
 
         if stage == "test" or stage is None:
-            self.dataset_test = TinyImageNetDataset(self.data_dir, transform=self.val_transform, mode='val')
+            self.dataset_test = TinyImageNetDataset(self.data_dir, transform=self.val_transform, mode='test')
 
     def train_dataloader(self):
         return DataLoader(self.dataset_train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
