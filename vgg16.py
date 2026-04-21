@@ -9,7 +9,7 @@ import helper_hpc as helper
 
 
 class Net(pl.LightningModule):
-    def __init__(self, num_classes=10, classnames=None, diversity=None, lr=5e-5, bn=True, log_activations=False):
+    def __init__(self, num_classes=10, classnames=None, diversity=None, lr=5e-5, bn=True, log_activations=False, use_scheduler=False):
         super().__init__()
 
         self.save_hyperparameters()
@@ -19,6 +19,7 @@ class Net(pl.LightningModule):
         self.diversity = diversity
         self.train_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
         self.valid_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
+        self.test_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
         self.lr = lr
 
         if bn:
@@ -30,6 +31,9 @@ class Net(pl.LightningModule):
         # self.activations = {}
         # for i in range(len(self.conv_layers)):
         #     self.activations[i] = []
+        
+        self.use_scheduler=use_scheduler
+        
         self.log_activations = log_activations
         if self.log_activations:
             self.activations={}
@@ -145,9 +149,36 @@ class Net(pl.LightningModule):
         self.log('val_loss_epoch', avg_loss, sync_dist=True)
         self.log('val_acc_epoch', self.valid_acc, sync_dist=True)
 
+    def test_step(self, test_batch, batch_idx):
+        with torch.no_grad():
+            x, y = test_batch
+            
+            # I think the hook still happens in validation,
+            # but I'm not clearing it out causing CUDA OOM(?)
+            if self.log_activations:
+                for i in range(len(self.activations)):
+                    self.activations[i] = []
+            
+            logits = self.forward(x)
+
+            loss = self.cross_entropy_loss(logits, y)
+
+            self.test_acc(logits, y)
+
+            self.log('test_loss', loss)
+            self.log('test_acc', self.test_acc)
+            batch_dictionary = {'test_loss': loss, 
+                                'test_acc': self.test_acc
+                                }
+        return batch_dictionary
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.lr)
-        return optimizer
+        if self.use_scheduler:
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-7)
+            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"},}
+        else:
+            return optimizer
     
     def cross_entropy_loss(self, logits, labels):
         # return F.nll_loss(logits, labels)

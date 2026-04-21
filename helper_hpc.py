@@ -45,7 +45,7 @@ def create_random_images(num_images=200):
 #     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
 #     return train_loader
 from pytorch_lightning.plugins import DDPPlugin
-def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, fixed_conv=False, val_interval=1, novelty_interval=None, diversity={'type':'absolute', 'pdop':None, 'ldop':None, 'k': None, 'k_strat':True}, scaled=False, devices=1, save_interval=None, bn=True, log_activations=False):
+def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, fixed_conv=False, val_interval=1, novelty_interval=None, diversity={'type':'absolute', 'pdop':None, 'ldop':None, 'k': None, 'k_strat':True}, scaled=False, devices=1, save_interval=None, bn=True, log_activations=False, early_stopping=False, use_scheduler=False):
     # check which dataset and get the classes for it
     gc.collect()
     torch.cuda.empty_cache()
@@ -69,7 +69,7 @@ def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, 
         net = vgg16(num_classes=data_module.num_classes, classnames=classnames, diversity=None, lr=lr, bn=bn, log_activations=log_activations)
         net = net.to(device)
     elif len(filters) == 6:
-        net = Net(num_classes=data_module.num_classes, classnames=classnames, diversity=diversity, lr=lr, bn=bn, data_dims=data_module.dims, log_activations=log_activations)
+        net = Net(num_classes=data_module.num_classes, classnames=classnames, diversity=diversity, lr=lr, bn=bn, data_dims=data_module.dims, log_activations=log_activations, use_scheduler=use_scheduler)
         # device = torch.device(0)
         # net = net.to(device)
     else:
@@ -110,8 +110,17 @@ def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, 
         save_path = PATH
     callbacks=None
     if save_interval is not None:
-        callbacks=[pl.callbacks.ModelCheckpoint(every_n_epochs=save_interval,save_top_k=-1)]
-
+        callbacks=[]
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val_loss",save_top_k=1,mode="min",filename="best-model-{epoch:02d}-{val_loss:.2f}")
+        callbacks.append(checkpoint_callback)
+    if early_stopping:
+        if callbacks is None:
+            callbacks = []
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val_loss",save_top_k=1,mode="min",filename="best-model-{epoch:02d}-{val_loss:.2f}")
+        callbacks.append(checkpoint_callback)
+        early_stopping_callback=pl.callbacks.EarlyStopping(monitor="val_loss", patience=10)
+        callbacks.append(early_stopping_callback)  
+        
     if not scaled:
         wandb_logger = WandbLogger(log_model=False, log_graph=False)
     else:
@@ -127,6 +136,12 @@ def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, 
     # find_best_lr(trainer, net, data_module)
     # torch.cuda.empty_cache()
     trainer.fit(net, datamodule=data_module)
+    
+    best_model_path=checkpoint_callback.best_model_path
+    print(f"The best model (not last) is at: {best_model_path}")
+    
+    data_module.setup(stage='test')
+    trainer.test(net, datamodule=data_module,ckpt_path="best")
 
     # torch.save(net.state_dict(), save_path)
     # return record_progress

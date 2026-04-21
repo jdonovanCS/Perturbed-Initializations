@@ -10,7 +10,7 @@ import time
 # DEFINE a CONV NN
 
 class Net(pl.LightningModule):
-    def __init__(self, num_classes=10, classnames=None, diversity=None, lr=.001, bn=True, data_dims=(3,32,32), log_activations=False):
+    def __init__(self, num_classes=10, classnames=None, diversity=None, lr=.001, bn=True, data_dims=(3,32,32), log_activations=False, use_scheduler=False):
         super().__init__()
         self.save_hyperparameters()
         self.BatchNorm1 = nn.BatchNorm2d(32)
@@ -31,6 +31,7 @@ class Net(pl.LightningModule):
                             nn.Conv2d(256, 256, 3, padding=1)])
         
         self.log_activations = log_activations
+        self.use_scheduler=use_scheduler
         
         self.activations = {}
         self.activations_after_nonlineararity = {}
@@ -184,10 +185,6 @@ class Net(pl.LightningModule):
             for label, prediction in zip(y, labels_hat):
                 if label == prediction:
                     corr_pred[self.classnames[label]] += 1
-                # print(self.classnames)
-                # print(label)
-                # print(total_pred)
-                # print(self.classnames[label])
                 total_pred[self.classnames[label]] += 1
             for classname, correct_count in corr_pred.items():
                 accuracy = 0
@@ -238,6 +235,8 @@ class Net(pl.LightningModule):
 
     def test_step(self, test_batch, batch_idx):
         with torch.no_grad():
+            for i in range(len(self.conv_layers)):
+                self.activations[i] = []
             x, y = test_batch
             logits = self.forward(x, get_activations=True)
             # get loss
@@ -263,9 +262,7 @@ class Net(pl.LightningModule):
             # get novelty score
             novelty_score = self.compute_feature_novelty()
             # clear out activations
-            if self.log_activations:
-                for i in range(len(self.conv_layers)):
-                    self.activations[i] = []
+            
             # log loss, acc, class acc, and novelty score
             self.log('test_loss', loss)
             self.log('test_acc', acc)
@@ -291,7 +288,11 @@ class Net(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
-        return optimizer
+        if self.use_scheduler:
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-7)
+            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"},}
+        else:
+            return optimizer
     
     def cross_entropy_loss(self, logits, labels):
         # return F.nll_loss(logits, labels)

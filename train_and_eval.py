@@ -20,10 +20,12 @@ parser.add_argument('--local_rank', metavar="N", help='if using ddp and multiple
 # parser.add_argument('--rand_norm', action='store_true')
 parser.add_argument('--gram-schmidt', help='gram-schmidt used to orthonormalize filters', action='store_true')
 parser.add_argument('--novelty_interval', help='How often should a novelty score be captured during training?', default=0)
-parser.add_argument('--test_accuracy_interval', help='How often should test accuracy be assessed during training?', default=4)
+parser.add_argument('--val_accuracy_interval', help='How often should test accuracy be assessed during training?', default=1)
 parser.add_argument('--batch_size', help="batch size for training", type=int, default=64)
 parser.add_argument('--lr', help='Learning rate for training', default=.001, type=float)
 parser.add_argument('--save_interval', help='How often (in epochs) should the model checkpoint be saved', default=None, type=int)
+parser.add_argument('--use_scheduler', help='if using cosine annealling optimizer scheduling is preferred', action='store_true')
+parser.add_argument('--early_stopping', help='if early stopping based on patience of val loss is desired use this', action='store_true')
 parser.add_argument('--no_bn', help='Train networks without batchnorm layers', action='store_true')
 parser.add_argument('--log_activations', help="Log activation values as the network is trained", action='store_true')
 
@@ -133,6 +135,8 @@ def run():
     helper.config['layerwise_diversity_op'] = args.layerwise_diversity_op
     helper.config['k'] = args.k
     helper.config['k_strat'] = args.k_strat
+    helper.config['early_stopping'] = args.early_stopping
+    helper.config['scheduler'] = args.use_scheduler
     helper.update_config()
     
     
@@ -175,7 +179,7 @@ def run():
             helper.update_config()
             save_path = "trained_models/trained/conv{}_e{}_n{}_r{}_g{}.pth".format(not fixed_conv, experiment_name, name, run_num, n)
             print('Training and Evaluating: {} Gen: {} Run: {}'.format(name, n, run_num))
-            record_progress = helper.train_network(data_module=data_module, filters=stored_filters[run_num][n], epochs=epochs, lr=args.lr, save_path=save_path, fixed_conv=fixed_conv, novelty_interval=int(args.novelty_interval), val_interval=int(args.test_accuracy_interval), diversity=diversity, scaled=scaled, devices=args.devices, save_interval=args.save_interval, bn=not args.no_bn, log_activations=args.log_activations)
+            record_progress = helper.train_network(data_module=data_module, filters=stored_filters[run_num][n], epochs=epochs, lr=args.lr, save_path=save_path, fixed_conv=fixed_conv, novelty_interval=int(args.novelty_interval), val_interval=int(args.val_accuracy_interval), diversity=diversity, scaled=scaled, devices=args.devices, save_interval=args.save_interval, bn=not args.no_bn, log_activations=args.log_activations, early_stopping=args.early_stopping, use_scheduler=args.use_scheduler)
             if n+1*loop_range_interval >= loop_range_end:
                 continue
             helper.run(seed=False, rank=args.local_rank if args.local_rank > 0 else 0)
@@ -193,6 +197,8 @@ def run():
             helper.config['layerwise_diversity_op'] = args.layerwise_diversity_op
             helper.config['k'] = args.k
             helper.config['k_strat'] = args.k_strat
+            helper.config['early_stopping'] = args.early_stopping
+            helper.config['scheduler'] = args.use_scheduler
             helper.update_config()
             # for c in classlist:
             #     classwise_accuracy_record[run_num][i][np.where(classlist==c)[0][0]] = record_accuracy[c]
