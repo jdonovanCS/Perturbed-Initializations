@@ -170,7 +170,10 @@ class TinyImageNetDataset(Dataset):
       self.label_data = np.zeros((self.samples_num,), dtype=np.int)
       for idx in tqdm(range(self.samples_num), desc=load_desc):
         s = self.samples[idx]
-        img = imageio.imread(s[0])
+        if mode=="test":
+          img=imageio.imread(s)
+        else:
+          img = imageio.imread(s[0])
         img = _add_channels(img)
         # img = Image.fromarray(img)
         self.img_data[idx] = img
@@ -194,7 +197,10 @@ class TinyImageNetDataset(Dataset):
       lbl = None if self.mode == 'test' else self.label_data[idx]
     else:
       s = self.samples[idx]
-      img = imageio.imread(s[0])
+      if self.mode=="test":
+        img = imageio.imread(s)
+      else:
+        img = imageio.imread(s[0])
       img = _add_channels(img)
     #   img = Image.fromarray(img)
       lbl = None if self.mode == 'test' else s[self.label_idx]
