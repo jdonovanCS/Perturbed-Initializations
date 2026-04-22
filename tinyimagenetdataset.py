@@ -100,7 +100,7 @@ class TinyImageNetPaths:
     }
 
     # Get the test paths
-    self.paths['test'] = list(map(lambda x: os.path.join(test_path, x),
+    self.paths['test'] = list(map(lambda x: os.path.join(test_path, "images", x),
                                       os.listdir(test_path)))
     # Get the validation paths and labels
     with open(os.path.join(val_path, 'val_annotations.txt')) as valf:
