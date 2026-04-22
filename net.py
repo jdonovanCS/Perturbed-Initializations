@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 import helper_hpc as helper
 import time
+import torchmetrics
 
 # DEFINE a CONV NN
 
@@ -35,16 +36,28 @@ class Net(pl.LightningModule):
         
         self.activations = {}
         self.activations_after_nonlineararity = {}
+        self.layer_metrics = {}
         for i in range(len(self.conv_layers)):
             self.activations[i] = []
-
-        for i in range(len(self.conv_layers)):
             self.activations_after_nonlineararity[i] = []
+            self.layer_metrics[f"activation_{i}"] = torchmetrics.MeanMetric()
+            self.layer_metrics[f"activation_correlation_{i}"] = torchmetrics.MeanMetric()
+            self.layer_metrics[f"activation_covariance_{i}"] = torchmetrics.MeanMetric()
+            self.layer_metrics[f"activation_cosine_distance_{i}"] = torchmetrics.MeanMetric() 
 
         self.classnames = classnames
         self.diversity = diversity
         self.lr = lr
         self.bn = bn
+        
+        self.train_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
+        self.valid_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
+        self.test_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
+        self.train_loss = torchmetrics.MeanMetric()
+        self.valid_loss = torchmetrics.MeanMetric()
+        self.test_loss = torchmetrics.MeanMetric()
+        self.valid_per_class_acc = torchmetrics.MulticlassAccuracy(num_classes=num_classes, average="none")
+        self.novelty_score = torchmetrics.MeanMetric()
         # self.avg_novelty = 0
 
 
@@ -123,47 +136,35 @@ class Net(pl.LightningModule):
         # get loss
         loss = self.cross_entropy_loss(logits, y)
         # get acc
-        labels_hat = torch.argmax(logits, 1)
-        acc = torch.sum(y==labels_hat)/(len(y)*1.0)
+        self.train_acc(logits, y)
+        self.train_loss(loss)
+        
+        # labels_hat = torch.argmax(logits, 1)
+        # acc = torch.sum(y==labels_hat)/(len(y)*1.0)
         # log loss and acc
-        self.log('train_loss', loss)
-        self.log('train_acc', acc)
-        if self.log_activations:
-            for i in range(len(self.conv_layers)):
-                self.log('activation_{}'.format(i+1), torch.stack(self.activations_after_nonlineararity[i]).flatten().mean())
-        if self.log_activations:
-            for i in range(len(self.conv_layers)):
-                cov_matrix = self.get_activation_covariance(torch.cat(self.activations_after_nonlineararity[i]))
-                C = cov_matrix.shape[0]
-                off_diag = cov_matrix[~torch.eye(C, dtype=bool)]
-                # needed to absolute value in here in case of positive and negative correlations canceling each other out.
-                mean_cov = off_diag.abs().mean().item()
-                self.log('activation_map_covariance{}'.format(i+1), mean_cov)
-                v = torch.diag(cov_matrix)
-                stddev = torch.sqrt(v + 1e-8)
-                corr_matrix = cov_matrix / stddev[:, None] / stddev[None, :]
-                off_diag_corr = corr_matrix[~torch.eye(C, dtype=bool)].abs().mean().item()
-                self.log('activation_map_correlation{}'.format(i+1), off_diag_corr)
-        if self.log_activations:
-            for i in range(len(self.conv_layers)):
-                cosine_dist_matrix = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlineararity[i]))
-                C = cosine_dist_matrix.shape[0]
-                off_diag = cosine_dist_matrix[~torch.eye(C, dtype=bool)]
-                mean_cosine_distance = off_diag.mean().item()
-                self.log('activation_map_cosine_distance{}'.format(i+1), mean_cosine_distance)
         
-        batch_dictionary={
-	            "train_loss": loss, "train_acc": acc, 'loss': loss
-	        }
-        return batch_dictionary
+        self.log('train_loss', self.train_loss, on_step=True, on_epoch=True)
+        self.log('train_acc', self.train_acc, on_step=True, on_epoch=True)
+        if self.log_activations:
+            for i in range(len(self.conv_layers)):
+                # calculate and log activation map scalar
+                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations_after_nonlineararity[i]).flatten().mean())
+                self.log(f'activation_{i+1}', self.layer_metrics[f"activation_{i}"], on_step=True, on_epoch=True)
 
-    def training_epoch_end(self,outputs):
-        avg_loss = torch.stack([x['train_loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([x['train_acc'] for x in outputs]).mean()
-        
-        self.log('train_loss_epoch', avg_loss)
-        self.log('train_acc_epoch', avg_acc)
-        gc.collect()
+                # calculate and log activation map covariance
+                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlineararity[i]))
+                self.layer_metrics[f"activation_covariance_{i}"].update(mean_cov)
+                self.log(f'activation_map_covariance{i+1}', self.layer_metrics[f"activation_covariance_{i}"], on_step=True, on_epoch=True)
+                
+                #calculate and log activation map pearson correlation
+                off_diag_corr = self.get_activation_correlation(cov_matrix)
+                self.layer_metrics[f"activation_correlation_{i}"].update(off_diag_corr)
+                self.log(f'activation_map_correlation{i+1}', self.layer_metrics[f"activation_correlation_{i}"], on_step=True, on_epoch=True)
+
+                # calculate and log activation map cosine distance
+                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlineararity[i]))
+                self.layer_metrics[f"activation_cosine_distance_{i}"].update(mean_cosine_distance)
+                self.log(f'activation_map_cosine_distance{i+1}', self.layer_metrics[f"activation_cosine_distance_{i}"], on_step=True, on_epoch=True)
     
     def validation_step(self, val_batch, batch_idx):
         with torch.no_grad():
@@ -173,55 +174,26 @@ class Net(pl.LightningModule):
             logits = self.forward(x, get_activations=True)
             # get loss
             loss = self.cross_entropy_loss(logits, y)
-            # get acc
-            labels_hat = torch.argmax(logits, 1)
-            acc = torch.sum(y==labels_hat)/(len(y)*1.0)
-            # get class acc
-            class_acc = {}
-            if self.classnames == None:
-                self.classnames = list(set(y))
-            corr_pred = {classname: 0 for classname in self.classnames}
-            total_pred = {classname: 0 for classname in self.classnames}
-            for label, prediction in zip(y, labels_hat):
-                if label == prediction:
-                    corr_pred[self.classnames[label]] += 1
-                total_pred[self.classnames[label]] += 1
-            for classname, correct_count in corr_pred.items():
-                accuracy = 0
-                if correct_count != 0 and total_pred[classname] != 0:
-                    accuracy = 100 * float(correct_count) / total_pred[classname]
-                class_acc[classname] = accuracy
+            
+            self.valid_acc(logits, y)
+            self.valid_loss(loss)
+            
+            # self.valid_per_class_acc(logits, y)
+            # current_per_class = self.valid_per_class_acc.compute()
+            # for i, acc in enumerate(current_per_class):
+            #     self.log(f"step_acc_class_{i}", acc, on_step=True, on_epoch=True)
+            
             # get novelty score
             novelty_score = self.compute_feature_novelty()
+
+            self.novelty_score(novelty_score)
 
             # log loss, acc, class acc, and novelty score
             # clear out activations
             
-            self.log('val_loss', loss)
-            self.log('val_acc', acc)
-            self.log('val_class_acc', class_acc)
-            self.log('val_novelty', novelty_score)
-            batch_dictionary = {'val_loss': loss, 
-                                'val_acc': acc, 
-                                'val_class_acc': class_acc, 
-                                'val_novelty': novelty_score 
-                                }
-        return batch_dictionary
-    
-    def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([x['val_acc'] for x in outputs]).mean()
-        avg_class_acc = {}
-        for x in outputs:
-            for k, v in x['val_class_acc'].items():
-                avg_class_acc[k] = v
-        avg_novelty = np.stack([x['val_novelty'] for x in outputs]).mean()
-        self.avg_novelty = avg_novelty
-        self.log('val_loss_epoch', avg_loss)
-        self.log('val_acc_epoch', avg_acc)
-        self.log('val_class_acc_epoch', avg_class_acc)
-        self.log('val_novelty_epoch', avg_novelty)
-        gc.collect()
+            self.log('val_loss', self.valid_loss)
+            self.log('val_acc', self.valid_acc)
+            self.log('val_novelty', self.novelty_score)
 
     def get_fitness(self, batch):
         with torch.no_grad():
@@ -241,50 +213,13 @@ class Net(pl.LightningModule):
             logits = self.forward(x, get_activations=True)
             # get loss
             loss = self.cross_entropy_loss(logits, y)
-            # get acc
-            labels_hat = torch.argmax(logits, 1)
-            acc = torch.sum(y==labels_hat)/(len(y)*1.0)
-            # get class acc
-            class_acc = {}
-            if self.classnames == None:
-                self.classnames = list(set(y))
-            corr_pred = {classname: 0 for classname in self.classnames}
-            total_pred = {classname: 0 for classname in self.classnames}
-            for label, prediction in zip(y, labels_hat):
-                    if label == prediction:
-                        corr_pred[self.classnames[label]] += 1
-                    total_pred[self.classnames[label]] += 1
-            for classname, correct_count in corr_pred.items():
-                accuracy = 0
-                if correct_count != 0 and total_pred[classname] != 0:
-                    accuracy = 100 * float(correct_count) / total_pred[classname]
-                class_acc[classname] = accuracy
-            # get novelty score
-            novelty_score = self.compute_feature_novelty()
-            # clear out activations
             
-            # log loss, acc, class acc, and novelty score
-            self.log('test_loss', loss)
-            self.log('test_acc', acc)
-            self.log('test_class_acc', class_acc)
-            self.log('test_novelty', novelty_score)
-            batch_dictionary = {'test_loss': loss, 'test_acc': acc, 'test_class_acc': class_acc, 'test_novelty': novelty_score}
-        return batch_dictionary
-
-    def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([x['test_acc'] for x in outputs]).mean()
-        avg_class_acc = {}
-        for x in outputs:
-            for k, v in x['test_class_acc'].items():
-                avg_class_acc[k] = v
-        avg_novelty = np.stack([x['test_novelty'] for x in outputs]).mean()
-        self.avg_novelty = avg_novelty
-        self.log('test_loss_epoch', avg_loss)
-        self.log('test_acc_epoch', avg_acc)
-        self.log('test_class_acc_epoch', avg_class_acc)
-        self.log('test_novelty_epoch', avg_novelty)
-        gc.collect()
+            self.test_acc(logits, y)
+            self.test_loss(loss)
+            
+            # log loss, acc
+            self.log('test_loss', self.test_loss, on_step=True, on_epoch=True)
+            self.log('test_acc', self.test_acc, on_step=True, on_epoch=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.parameters()), lr=self.lr)
@@ -328,10 +263,26 @@ class Net(pl.LightningModule):
         return self.activations
 
     def get_activation_covariance(self, activations):
-        return helper.get_activation_covariance(activations)
+        cov_matrix = helper.get_activation_covariance(activations)
+        C = cov_matrix.shape[0]
+        off_diag = cov_matrix[~torch.eye(C, dtype=bool)]
+        mean_cov = off_diag.abs().mean().item()
+        return cov_matrix, mean_cov
+    
+    def get_activation_correlation(self, cov_matrix):
+        v = torch.diag(cov_matrix)
+        stddev = torch.sqrt(v+1e-8)
+        corr_matrix=cov_matrix/stddev[:, None] / stddev[None, :]
+        off_diag_corr = corr_matrix[~torch.eye(C, dtype=bool)].abs().mean().item()
+        return off_diag_corr
+        
 
     def get_activation_cosine_distance(self, activations):
-        return helper.get_activation_cosine_distance(activations)
+        cos_dist_matrix = helper.get_activation_cosine_distance(activations)
+        C = cos_dist_matrix.shape[0]
+        off_diag = cos_dist_matrix[~torch.eye(C, dtype=bool)]
+        mean_cosine_distance=off_diag.mean.item()
+        return mean_cosine_distance
 
     def compute_feature_novelty(self):
         
