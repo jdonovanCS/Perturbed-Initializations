@@ -35,15 +35,20 @@ class Net(pl.LightningModule):
         self.use_scheduler=use_scheduler
         
         self.activations = {}
-        self.activations_after_nonlineararity = {}
+        self.activations_after_nonlinearity = {}
         self.layer_metrics = {}
         for i in range(len(self.conv_layers)):
             self.activations[i] = []
-            self.activations_after_nonlineararity[i] = []
+            self.activations_after_nonlinearity[i] = []
             self.layer_metrics[f"activation_{i}"] = torchmetrics.MeanMetric()
             self.layer_metrics[f"activation_correlation_{i}"] = torchmetrics.MeanMetric()
             self.layer_metrics[f"activation_covariance_{i}"] = torchmetrics.MeanMetric()
             self.layer_metrics[f"activation_cosine_distance_{i}"] = torchmetrics.MeanMetric() 
+            self.layer_metrics[f"activation_{i}_afterRELU"] = torchmetrics.MeanMetric()
+            self.layer_metrics[f"activation_correlation_{i}_afterRELU"] = torchmetrics.MeanMetric()
+            self.layer_metrics[f"activation_covariance_{i}_afterRELU"] = torchmetrics.MeanMetric()
+            self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"] = torchmetrics.MeanMetric() 
+
 
         self.classnames = classnames
         self.diversity = diversity
@@ -70,14 +75,14 @@ class Net(pl.LightningModule):
             x = self.BatchNorm1(x)
         x = F.relu(x)
         if get_activations_after_nonlinearity:
-            self.activations_after_nonlineararity[conv_count].append(x)
+            self.activations_after_nonlinearity[conv_count].append(x)
         conv_count += 1
         x = self.conv_layers[conv_count](x)
         if get_activations:
             self.activations[conv_count].append(x)
         x = F.relu(x)
         if get_activations_after_nonlinearity:
-            self.activations_after_nonlineararity[conv_count].append(x)
+            self.activations_after_nonlinearity[conv_count].append(x)
         conv_count += 1
         x = self.pool(x)
         x = self.conv_layers[conv_count](x)
@@ -87,14 +92,14 @@ class Net(pl.LightningModule):
             x = self.BatchNorm2(x)
         x = F.relu(x)
         if get_activations_after_nonlinearity:
-            self.activations_after_nonlineararity[conv_count].append(x)
+            self.activations_after_nonlinearity[conv_count].append(x)
         conv_count += 1
         x = self.conv_layers[conv_count](x)
         if get_activations:
             self.activations[conv_count].append(x)
         x = F.relu(x)
         if get_activations_after_nonlinearity:
-            self.activations_after_nonlineararity[conv_count].append(x)
+            self.activations_after_nonlinearity[conv_count].append(x)
         conv_count += 1
         x = self.pool(x)
         x = self.dropout1(x)
@@ -105,14 +110,14 @@ class Net(pl.LightningModule):
             x = self.BatchNorm3(x)
         x = F.relu(x)
         if get_activations_after_nonlinearity:
-            self.activations_after_nonlineararity[conv_count].append(x)
+            self.activations_after_nonlinearity[conv_count].append(x)
         conv_count += 1
         x = self.conv_layers[conv_count](x)
         if get_activations:
             self.activations[conv_count].append(x)
         x = F.relu(x)
         if get_activations_after_nonlinearity:
-            self.activations_after_nonlineararity[conv_count].append(x)
+            self.activations_after_nonlinearity[conv_count].append(x)
         x = self.pool(x)
         x = torch.flatten(x, 1)
         x = self.dropout2(x)
@@ -131,8 +136,9 @@ class Net(pl.LightningModule):
         x, y = train_batch
         if self.log_activations:
             for i in range(len(self.conv_layers)):
-                self.activations_after_nonlineararity[i] = []
-        logits = self.forward(x, get_activations_after_nonlinearity=self.log_activations)
+                self.activations_after_nonlinearity[i] = []
+                self.activations[i] = []
+        logits = self.forward(x, get_activations=self.log_activations, get_activations_after_nonlinearity=self.log_activations)
         # get loss
         loss = self.cross_entropy_loss(logits, y)
         # get acc
@@ -148,11 +154,11 @@ class Net(pl.LightningModule):
         if self.log_activations:
             for i in range(len(self.conv_layers)):
                 # calculate and log activation map scalar
-                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations_after_nonlineararity[i]).flatten().mean())
+                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations_after_nonlinearity[i]).flatten().mean())
                 self.log(f'activation_{i+1}', self.layer_metrics[f"activation_{i}"], on_step=True, on_epoch=True)
 
                 # calculate and log activation map covariance
-                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlineararity[i]))
+                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlinearity[i]))
                 self.layer_metrics[f"activation_covariance_{i}"].update(mean_cov)
                 self.log(f'activation_map_covariance{i+1}', self.layer_metrics[f"activation_covariance_{i}"], on_step=True, on_epoch=True)
                 
@@ -162,9 +168,29 @@ class Net(pl.LightningModule):
                 self.log(f'activation_map_correlation{i+1}', self.layer_metrics[f"activation_correlation_{i}"], on_step=True, on_epoch=True)
 
                 # calculate and log activation map cosine distance
-                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlineararity[i]))
+                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlinearity[i]))
                 self.layer_metrics[f"activation_cosine_distance_{i}"].update(mean_cosine_distance)
                 self.log(f'activation_map_cosine_distance{i+1}', self.layer_metrics[f"activation_cosine_distance_{i}"], on_step=True, on_epoch=True)
+
+                
+                # calculate and log activation map scalar
+                self.layer_metrics[f"activation_{i}_afterRELU"].update(torch.stack(self.activations_after_nonlinearity[i]).flatten().mean())
+                self.log(f'activation_{i+1}_afterRELU', self.layer_metrics[f"activation_{i}_afterRELU"], on_step=True, on_epoch=True)
+
+                # calculate and log activation map covariance
+                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlinearity[i]))
+                self.layer_metrics[f"activation_covariance_{i}_afterRELU"].update(mean_cov)
+                self.log(f'activation_map_covariance{i+1}_afterRELU', self.layer_metrics[f"activation_covariance_{i}_afterRELU"], on_step=True, on_epoch=True)
+                
+                #calculate and log activation map pearson correlation
+                off_diag_corr = self.get_activation_correlation(cov_matrix)
+                self.layer_metrics[f"activation_correlation_{i}_afterRELU"].update(off_diag_corr)
+                self.log(f'activation_map_correlation{i+1}_afterRELU', self.layer_metrics[f"activation_correlation_{i}_afterRELU"], on_step=True, on_epoch=True)
+
+                # calculate and log activation map cosine distance
+                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlinearity[i]))
+                self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"].update(mean_cosine_distance)
+                self.log(f'activation_map_cosine_distance{i+1}_afterRELU', self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"], on_step=True, on_epoch=True)
     
     def validation_step(self, val_batch, batch_idx):
         with torch.no_grad():

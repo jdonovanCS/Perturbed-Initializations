@@ -20,6 +20,9 @@ class Net(pl.LightningModule):
         self.train_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
         self.valid_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
         self.test_acc = torchmetrics.classification.Accuracy(task="multiclass", num_classes=num_classes)
+        self.train_loss = torchmetrics.MeanMetric()
+        self.valid_loss = torchmetrics.MeanMetric()
+        self.test_loss = torchmetrics.MeanMetric()
         self.lr = lr
 
         if bn:
@@ -42,6 +45,10 @@ class Net(pl.LightningModule):
                 if isinstance(m, (torch.nn.Conv2d)):
                     self.model.features[i].register_forward_hook(self.get_activation(count))
                     self.activations[count] = []
+                    self.layer_metrics[f"activation_{count}"] = torchmetrics.MeanMetric()
+                    self.layer_metrics[f"activation_correlation_{count}"] = torchmetrics.MeanMetric()
+                    self.layer_metrics[f"activation_covariance_{count}"] = torchmetrics.MeanMetric()
+                    self.layer_metrics[f"activation_cosine_distance_{count}"] = torchmetrics.MeanMetric() 
                     count += 1
 
     def get_activation(self, name):
@@ -81,39 +88,30 @@ class Net(pl.LightningModule):
 
         loss = self.cross_entropy_loss(logits, y)
         self.train_acc(logits, y)
+        self.train_loss(loss)
 
         # log loss and acc
-        self.log('train_loss', loss)
-        self.log('train_acc', self.train_acc)
-        if self.log_activations:
-            for i in self.activations:
-                self.log('activation_{}'.format(i+1), torch.stack(self.activations[i]).flatten().mean())
-        if self.log_activations:
-            for i in self.activations:
-                cov_matrix = self.get_activation_covariance(torch.cat(self.activations[i]))
-                C = cov_matrix.shape[0]
-                off_diag = cov_matrix[~torch.eye(C, dtype=bool)]
-                mean_cov = off_diag.mean().item()
-                self.log('activation_map_covariance{}'.format(i+1), mean_cov)
-                v = torch.diag(cov_matrix)
-                stddev = torch.sqrt(v + 1e-8)
-                corr_matrix = cov_matrix / stddev[:, None] / stddev[None, :]
-                off_diag_corr = corr_matrix[~torch.eye(C, dtype=bool)].abs().mean().item()
-                self.log('activation_map_correlation{}'.format(i+1), off_diag_corr)
-        if self.log_activations:
-            for i in self.activations:
-                cosine_dist_matrix = self.get_activation_cosine_distance(torch.cat(self.activations[i]))
-                C = cosine_dist_matrix.shape[0]
-                off_diag = cosine_dist_matrix[~torch.eye(C, dtype=bool)]
-                mean_cosine_distance = off_diag.mean().item()
-                self.log('activation_map_cosine_distance{}'.format(i+1), mean_cosine_distance)
-        batch_dictionary={
-	            "train_loss": loss, "train_acc": self.train_acc, 'loss': loss
-	        }
-        if self.log_activations:
-            for i in range(len(self.activations)):
-                self.activations[i] = []
-        return batch_dictionary
+        self.log('train_loss', self.train_loss, on_step=True, on_epoch=True)
+        self.log('train_acc', self.train_acc, on_step=True, on_epoch=True)
+        # calculate and log activation map scalar
+                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations_after_nonlineararity[i]).flatten().mean())
+                self.log(f'activation_{i+1}', self.layer_metrics[f"activation_{i}"], on_step=True, on_epoch=True)
+
+                # calculate and log activation map covariance
+                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlineararity[i]))
+                self.layer_metrics[f"activation_covariance_{i}"].update(mean_cov)
+                self.log(f'activation_map_covariance{i+1}', self.layer_metrics[f"activation_covariance_{i}"], on_step=True, on_epoch=True)
+                
+                #calculate and log activation map pearson correlation
+                off_diag_corr = self.get_activation_correlation(cov_matrix)
+                self.layer_metrics[f"activation_correlation_{i}"].update(off_diag_corr)
+                self.log(f'activation_map_correlation{i+1}', self.layer_metrics[f"activation_correlation_{i}"], on_step=True, on_epoch=True)
+
+                # calculate and log activation map cosine distance
+                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlineararity[i]))
+                self.layer_metrics[f"activation_cosine_distance_{i}"].update(mean_cosine_distance)
+                self.log(f'activation_map_cosine_distance{i+1}', self.layer_metrics[f"activation_cosine_distance_{i}"], on_step=True, on_epoch=True)
+    
 
     def training_epoch_end(self,outputs):
         avg_loss = torch.stack([x['train_loss'] for x in outputs]).mean()
@@ -171,6 +169,11 @@ class Net(pl.LightningModule):
                                 'test_acc': self.test_acc
                                 }
         return batch_dictionary
+    
+    def test_epoch_end(self, outputs):
+        avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
+        self.log('test_loss_epoch', avg_loss, sync_dist=True)
+        self.log('test_acc_epoch', self.test_acc, sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.lr)
