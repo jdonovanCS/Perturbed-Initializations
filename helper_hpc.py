@@ -66,7 +66,7 @@ def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, 
         # torch.distributed.init_process_group(backend='gloo',
         #                              init_method='env://')
         print(device)
-        net = vgg16(num_classes=data_module.num_classes, classnames=classnames, diversity=None, lr=lr, bn=bn, log_activations=log_activations)
+        net = vgg16(num_classes=data_module.num_classes, classnames=classnames, diversity=None, lr=lr, bn=bn, log_activations=log_activations, use_scheduler=use_scheduler)
         net = net.to(device)
     elif len(filters) == 6:
         net = Net(num_classes=data_module.num_classes, classnames=classnames, diversity=diversity, lr=lr, bn=bn, data_dims=data_module.dims, log_activations=log_activations, use_scheduler=use_scheduler)
