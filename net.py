@@ -61,7 +61,7 @@ class Net(pl.LightningModule):
         self.train_loss = torchmetrics.MeanMetric()
         self.valid_loss = torchmetrics.MeanMetric()
         self.test_loss = torchmetrics.MeanMetric()
-        self.valid_per_class_acc = torchmetrics.MulticlassAccuracy(num_classes=num_classes, average="none")
+        self.valid_per_class_acc = torchmetrics.classification.MulticlassAccuracy(num_classes=num_classes, average="none")
         self.novelty_score = torchmetrics.MeanMetric()
         # self.avg_novelty = 0
 
@@ -138,6 +138,7 @@ class Net(pl.LightningModule):
             for i in range(len(self.conv_layers)):
                 self.activations_after_nonlinearity[i] = []
                 self.activations[i] = []
+                
         logits = self.forward(x, get_activations=self.log_activations, get_activations_after_nonlinearity=self.log_activations)
         # get loss
         loss = self.cross_entropy_loss(logits, y)
@@ -153,12 +154,13 @@ class Net(pl.LightningModule):
         self.log('train_acc', self.train_acc, on_step=True, on_epoch=True)
         if self.log_activations:
             for i in range(len(self.conv_layers)):
+                # --------------- BEFORE RELU -----------------
                 # calculate and log activation map scalar
-                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations_after_nonlinearity[i]).flatten().mean())
+                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations[i]).flatten().mean())
                 self.log(f'activation_{i+1}', self.layer_metrics[f"activation_{i}"], on_step=True, on_epoch=True)
 
                 # calculate and log activation map covariance
-                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlinearity[i]))
+                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations[i]))
                 self.layer_metrics[f"activation_covariance_{i}"].update(mean_cov)
                 self.log(f'activation_map_covariance{i+1}', self.layer_metrics[f"activation_covariance_{i}"], on_step=True, on_epoch=True)
                 
@@ -168,11 +170,12 @@ class Net(pl.LightningModule):
                 self.log(f'activation_map_correlation{i+1}', self.layer_metrics[f"activation_correlation_{i}"], on_step=True, on_epoch=True)
 
                 # calculate and log activation map cosine distance
-                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlinearity[i]))
+                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations[i]))
                 self.layer_metrics[f"activation_cosine_distance_{i}"].update(mean_cosine_distance)
                 self.log(f'activation_map_cosine_distance{i+1}', self.layer_metrics[f"activation_cosine_distance_{i}"], on_step=True, on_epoch=True)
 
-                
+
+                # ----------- AFTER RELU -------------
                 # calculate and log activation map scalar
                 self.layer_metrics[f"activation_{i}_afterRELU"].update(torch.stack(self.activations_after_nonlinearity[i]).flatten().mean())
                 self.log(f'activation_{i+1}_afterRELU', self.layer_metrics[f"activation_{i}_afterRELU"], on_step=True, on_epoch=True)
@@ -197,7 +200,7 @@ class Net(pl.LightningModule):
             for i in range(len(self.conv_layers)):
                 self.activations[i] = []
             x, y = val_batch
-            logits = self.forward(x, get_activations=True)
+            logits = self.forward(x, get_activations=True, get_activations_after_nonlinearity=True)
             # get loss
             loss = self.cross_entropy_loss(logits, y)
             
@@ -217,9 +220,9 @@ class Net(pl.LightningModule):
             # log loss, acc, class acc, and novelty score
             # clear out activations
             
-            self.log('val_loss', self.valid_loss)
-            self.log('val_acc', self.valid_acc)
-            self.log('val_novelty', self.novelty_score)
+            self.log('val_loss', self.valid_loss, on_step=True, on_epoch=True)
+            self.log('val_acc', self.valid_acc, on_step=True, on_epoch=True)
+            self.log('val_novelty', self.novelty_score, on_step=True, on_epoch=True)
 
     def get_fitness(self, batch):
         with torch.no_grad():
@@ -233,10 +236,12 @@ class Net(pl.LightningModule):
 
     def test_step(self, test_batch, batch_idx):
         with torch.no_grad():
-            for i in range(len(self.conv_layers)):
-                self.activations[i] = []
+            if self.log_activations:
+                for i in range(len(self.conv_layers)):
+                    self.activations[i] = []
+                    self.activations_after_nonlinearity[i] = []
             x, y = test_batch
-            logits = self.forward(x, get_activations=True)
+            logits = self.forward(x)
             # get loss
             loss = self.cross_entropy_loss(logits, y)
             

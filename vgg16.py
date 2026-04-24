@@ -40,6 +40,7 @@ class Net(pl.LightningModule):
         self.log_activations = log_activations
         if self.log_activations:
             self.activations={}
+            self.activations_after_nonlinearity={}
             count = 0
             for i, m in enumerate(self.model.features.modules()):
                 if isinstance(m, (torch.nn.Conv2d)):
@@ -49,7 +50,14 @@ class Net(pl.LightningModule):
                     self.layer_metrics[f"activation_correlation_{count}"] = torchmetrics.MeanMetric()
                     self.layer_metrics[f"activation_covariance_{count}"] = torchmetrics.MeanMetric()
                     self.layer_metrics[f"activation_cosine_distance_{count}"] = torchmetrics.MeanMetric() 
-                    count += 1
+                if isinstance(m, (torch.nn.RELU)):
+                    self.model.features[i].register_forward_hook(self.get_activation_after_nonlinearity(count))
+                    self.activations_after_nonlinearity[count] = []
+                    self.layer_metrics[f"activation_{count}_afterRELU"] = torchmetrics.MeanMetric()
+                    self.layer_metrics[f"activation_correlation_{count}_afterRELU"] = torchmetrics.MeanMetric()
+                    self.layer_metrics[f"activation_covariance_{count}_afterRELU"] = torchmetrics.MeanMetric()
+                    self.layer_metrics[f"activation_cosine_distance_{count}_afterRELU"] = torchmetrics.MeanMetric() 
+                    count+=1
 
     def get_activation(self, name):
         def hook(model, input, output):
@@ -57,6 +65,11 @@ class Net(pl.LightningModule):
             # computation without CUDA out of memory
             # self.activations[name].append(output.detach().cpu())
             self.activations[name].append(output)
+        return hook
+    
+    def get_activation_after_nonlinearity(self, name):
+        def hook(model, input, output):
+            self.activations_after_nonlinearity[name].append(output)
         return hook
 
     def forward(self, x, get_activations=False):
@@ -83,6 +96,7 @@ class Net(pl.LightningModule):
         if self.log_activations:
             for i in range(len(self.activations)):
                 self.activations[i] = []
+                self.activations_after_nonlinearity[i] = []
 
         logits = self.forward(x, get_activations=self.log_activations)
 
@@ -93,12 +107,15 @@ class Net(pl.LightningModule):
         # log loss and acc
         self.log('train_loss', self.train_loss, on_step=True, on_epoch=True)
         self.log('train_acc', self.train_acc, on_step=True, on_epoch=True)
-        # calculate and log activation map scalar
-                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations_after_nonlineararity[i]).flatten().mean())
+        if self.log_activations:
+            for i in range(len(self.activations)):
+                # --------BEFORE RELU--------
+                # calculate and log activation map scalar
+                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations[i]).flatten().mean())
                 self.log(f'activation_{i+1}', self.layer_metrics[f"activation_{i}"], on_step=True, on_epoch=True)
 
                 # calculate and log activation map covariance
-                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlineararity[i]))
+                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations[i]))
                 self.layer_metrics[f"activation_covariance_{i}"].update(mean_cov)
                 self.log(f'activation_map_covariance{i+1}', self.layer_metrics[f"activation_covariance_{i}"], on_step=True, on_epoch=True)
                 
@@ -108,16 +125,29 @@ class Net(pl.LightningModule):
                 self.log(f'activation_map_correlation{i+1}', self.layer_metrics[f"activation_correlation_{i}"], on_step=True, on_epoch=True)
 
                 # calculate and log activation map cosine distance
-                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlineararity[i]))
+                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations[i]))
                 self.layer_metrics[f"activation_cosine_distance_{i}"].update(mean_cosine_distance)
                 self.log(f'activation_map_cosine_distance{i+1}', self.layer_metrics[f"activation_cosine_distance_{i}"], on_step=True, on_epoch=True)
-    
 
-    def training_epoch_end(self,outputs):
-        avg_loss = torch.stack([x['train_loss'] for x in outputs]).mean()
-        
-        self.log('train_loss_epoch', avg_loss, sync_dist=True)
-        self.log('train_acc_epoch', self.train_acc, sync_dist=True)
+                #------AFTER RELU--------
+                # calculate and log activation map scalar
+                self.layer_metrics[f"activation_{i}_afterRELU"].update(torch.stack(self.activations_after_nonlinearity[i]).flatten().mean())
+                self.log(f'activation_{i+1}_afterRELU', self.layer_metrics[f"activation_{i}_afterRELU"], on_step=True, on_epoch=True)
+
+                # calculate and log activation map covariance
+                cov_matrix, mean_cov = self.get_activation_covariance(torch.cat(self.activations_after_nonlinearity[i]))
+                self.layer_metrics[f"activation_covariance_{i}_afterRELU"].update(mean_cov)
+                self.log(f'activation_map_covariance{i+1}_afterRELU', self.layer_metrics[f"activation_covariance_{i}_afterRELU"], on_step=True, on_epoch=True)
+                
+                #calculate and log activation map pearson correlation
+                off_diag_corr = self.get_activation_correlation(cov_matrix)
+                self.layer_metrics[f"activation_correlation_{i}_afterRELU"].update(off_diag_corr)
+                self.log(f'activation_map_correlation{i+1}_afterRELU', self.layer_metrics[f"activation_correlation_{i}_afterRELU"], on_step=True, on_epoch=True)
+
+                # calculate and log activation map cosine distance
+                mean_cosine_distance = self.get_activation_cosine_distance(torch.cat(self.activations_after_nonlinearity[i]))
+                self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"].update(mean_cosine_distance)
+                self.log(f'activation_map_cosine_distance{i+1}_afterRELU', self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"], on_step=True, on_epoch=True)
     
     def validation_step(self, val_batch, batch_idx):
         with torch.no_grad():
@@ -128,24 +158,17 @@ class Net(pl.LightningModule):
             if self.log_activations:
                 for i in range(len(self.activations)):
                     self.activations[i] = []
+                    self.activations_after_nonlinearity[i] = []
             
-            logits = self.forward(x)
+            logits = self.forward(x, get_activations=True)
 
             loss = self.cross_entropy_loss(logits, y)
 
             self.valid_acc(logits, y)
+            self.valid_loss(loss)
 
-            self.log('val_loss', loss)
-            self.log('val_acc', self.valid_acc)
-            batch_dictionary = {'val_loss': loss, 
-                                'val_acc': self.valid_acc
-                                }
-        return batch_dictionary
-    
-    def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        self.log('val_loss_epoch', avg_loss, sync_dist=True)
-        self.log('val_acc_epoch', self.valid_acc, sync_dist=True)
+            self.log('val_loss', self.valid_loss, on_step=True, on_epoch=True)
+            self.log('val_acc', self.valid_acc, on_step=True, on_epoch=True)
 
     def test_step(self, test_batch, batch_idx):
         with torch.no_grad():
@@ -154,26 +177,19 @@ class Net(pl.LightningModule):
             # I think the hook still happens in validation,
             # but I'm not clearing it out causing CUDA OOM(?)
             if self.log_activations:
-                for i in range(len(self.activations)):
+                for i in range(len(self.conv_layers)):
                     self.activations[i] = []
+                    self.activations_after_nonlinearity[i] = []
             
             logits = self.forward(x)
 
             loss = self.cross_entropy_loss(logits, y)
 
             self.test_acc(logits, y)
+            self.test_loss(loss)
 
-            self.log('test_loss', loss)
-            self.log('test_acc', self.test_acc)
-            batch_dictionary = {'test_loss': loss, 
-                                'test_acc': self.test_acc
-                                }
-        return batch_dictionary
-    
-    def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
-        self.log('test_loss_epoch', avg_loss, sync_dist=True)
-        self.log('test_acc_epoch', self.test_acc, sync_dist=True)
+            self.log('test_loss', self.test_loss, on_step=True, on_epoch=True)
+            self.log('test_acc', self.test_acc, on_step=True, on_epoch=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.lr)
