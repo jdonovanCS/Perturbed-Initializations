@@ -37,6 +37,7 @@ class Net(pl.LightningModule):
         
         self.use_scheduler=use_scheduler
         
+        self.layer_metrics=nn.ModuleDict()
         self.log_activations = log_activations
         if self.log_activations:
             self.activations={}
@@ -50,7 +51,7 @@ class Net(pl.LightningModule):
                     self.layer_metrics[f"activation_correlation_{count}"] = torchmetrics.MeanMetric()
                     self.layer_metrics[f"activation_covariance_{count}"] = torchmetrics.MeanMetric()
                     self.layer_metrics[f"activation_cosine_distance_{count}"] = torchmetrics.MeanMetric() 
-                if isinstance(m, (torch.nn.RELU)):
+                if isinstance(m, (torch.nn.ReLU)):
                     self.model.features[i].register_forward_hook(self.get_activation_after_nonlinearity(count))
                     self.activations_after_nonlinearity[count] = []
                     self.layer_metrics[f"activation_{count}_afterRELU"] = torchmetrics.MeanMetric()
@@ -177,7 +178,7 @@ class Net(pl.LightningModule):
             # I think the hook still happens in validation,
             # but I'm not clearing it out causing CUDA OOM(?)
             if self.log_activations:
-                for i in range(len(self.conv_layers)):
+                for i in range(len(self.activations)):
                     self.activations[i] = []
                     self.activations_after_nonlinearity[i] = []
             
@@ -223,11 +224,27 @@ class Net(pl.LightningModule):
                 count += 1
 
     def get_activation_covariance(self, activations):
-        return helper.get_activation_covariance(activations)
+        cov_matrix = helper.get_activation_covariance(activations)
+        C = cov_matrix.shape[0]
+        off_diag = cov_matrix[~torch.eye(C, dtype=bool)]
+        mean_cov = off_diag.abs().mean().item()
+        return cov_matrix, mean_cov
 
     def get_activation_cosine_distance(self, activations):
-        return helper.get_activation_cosine_distance(activations)
+        cos_dist_matrix = helper.get_activation_cosine_distance(activations)
+        C = cos_dist_matrix.shape[0]
+        off_diag = cos_dist_matrix[~torch.eye(C, dtype=bool)]
+        mean_cosine_distance=off_diag.mean().item()
+        return mean_cosine_distance
     
+    def get_activation_correlation(self, cov_matrix):
+        C = cov_matrix.shape[0]
+        v = torch.diag(cov_matrix)
+        stddev = torch.sqrt(v+1e-8)
+        corr_matrix=cov_matrix/stddev[:, None] / stddev[None, :]
+        off_diag_corr = corr_matrix[~torch.eye(C, dtype=bool)].abs().mean().item()
+        return off_diag_corr
+
     # def get_filters(self, numpy=False):
     #     if numpy:
     #         return [m.weight.data.detach().cpu().numpy() for m in self.conv_layers]

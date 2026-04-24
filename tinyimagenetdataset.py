@@ -2,9 +2,10 @@ import imageio
 from PIL import Image
 import numpy as np
 import os
+import random
 
 from collections import defaultdict
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 
 from tqdm.autonotebook import tqdm
 
@@ -100,8 +101,10 @@ class TinyImageNetPaths:
     }
 
     # Get the test paths
-    self.paths['test'] = list(map(lambda x: os.path.join(test_path, "images", x),
-                                      os.listdir(os.path.join(test_path, "images"))))
+    # self.paths['test'] = list(map(lambda x: os.path.join(test_path, "images", x),
+    #                                   os.listdir(os.path.join(test_path, "images"))))
+    
+    
     # Get the validation paths and labels
     with open(os.path.join(val_path, 'val_annotations.txt')) as valf:
       for line in valf:
@@ -110,7 +113,23 @@ class TinyImageNetPaths:
         bbox = int(x0), int(y0), int(x1), int(y1)
         label_id = self.ids.index(nid)
         self.paths['val'].append((fname, label_id, nid, bbox))
-
+        
+    
+    class_to_samples = defaultdict(list)
+    for sample in self.paths['val']:
+      label_id = sample[1]
+      class_to_samples[label_id].append(sample)
+      
+    val_split, test_split = [], [] 
+    for label_id, samples in class_to_samples.items():
+      random.shuffle(samples)
+      mid = len(samples) // 2
+      val_split.extend(samples[:mid])
+      test_split.extend(samples[mid:])
+    
+    self.paths['val'] = val_split
+    self.paths['test'] = test_split
+    
     # Get the training paths
     train_nids = os.listdir(train_path)
     for nid in train_nids:
@@ -170,15 +189,15 @@ class TinyImageNetDataset(Dataset):
       self.label_data = np.zeros((self.samples_num,), dtype=np.int)
       for idx in tqdm(range(self.samples_num), desc=load_desc):
         s = self.samples[idx]
-        if mode=="test":
-          img=imageio.imread(s)
-        else:
-          img = imageio.imread(s[0])
+        # if mode=="test":
+        #   img=imageio.imread(s)
+        # else:
+        img = imageio.imread(s[0])
         img = _add_channels(img)
         # img = Image.fromarray(img)
         self.img_data[idx] = img
-        if mode != 'test':
-          self.label_data[idx] = s[self.label_idx]
+        # if mode != 'test':
+        self.label_data[idx] = s[self.label_idx]
 
       if load_transform:
         for lt in load_transform:
@@ -187,6 +206,7 @@ class TinyImageNetDataset(Dataset):
           if len(result) > 2:
             self.transform_results.update(result[2])
     self.preloaded = True
+    self.classes = list(set([x[self.label_idx] for x in self.samples]))
 
   def __len__(self):
     return self.samples_num
@@ -194,16 +214,18 @@ class TinyImageNetDataset(Dataset):
   def __getitem__(self, idx):
     if self.preload:
       img = self.img_data[idx]
-      lbl = None if self.mode == 'test' else self.label_data[idx]
+      # lbl = None if self.mode == 'test' else self.label_data[idx]
+      lbl = self.label_data[idx]
     else:
       s = self.samples[idx]
-      if self.mode=="test":
-        img = imageio.imread(s)
-      else:
-        img = imageio.imread(s[0])
+      # if self.mode=="test":
+      #   img = imageio.imread(s)
+      # else:
+      img = imageio.imread(s[0])
       img = _add_channels(img)
     #   img = Image.fromarray(img)
-      lbl = None if self.mode == 'test' else s[self.label_idx]
+      # lbl = None if self.mode == 'test' else s[self.label_idx]
+      lbl=s[self.label_idx]
     sample = {'image': img, 'label': lbl}
 
     if self.transform:

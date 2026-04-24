@@ -36,7 +36,7 @@ class Net(pl.LightningModule):
         
         self.activations = {}
         self.activations_after_nonlinearity = {}
-        self.layer_metrics = {}
+        self.layer_metrics = torch.nn.ModuleDict()
         for i in range(len(self.conv_layers)):
             self.activations[i] = []
             self.activations_after_nonlinearity[i] = []
@@ -156,7 +156,7 @@ class Net(pl.LightningModule):
             for i in range(len(self.conv_layers)):
                 # --------------- BEFORE RELU -----------------
                 # calculate and log activation map scalar
-                self.layer_metrics[f"activation_{i}"].update(torch.stack(self.activations[i]).flatten().mean())
+                self.layer_metrics[f"activation_{i}"](torch.stack(self.activations[i]).flatten().mean())
                 self.log(f'activation_{i+1}', self.layer_metrics[f"activation_{i}"], on_step=True, on_epoch=True)
 
                 # calculate and log activation map covariance
@@ -199,6 +199,7 @@ class Net(pl.LightningModule):
         with torch.no_grad():
             for i in range(len(self.conv_layers)):
                 self.activations[i] = []
+                self.activations_after_nonlinearity[i]=[]
             x, y = val_batch
             logits = self.forward(x, get_activations=True, get_activations_after_nonlinearity=True)
             # get loss
@@ -301,6 +302,7 @@ class Net(pl.LightningModule):
         return cov_matrix, mean_cov
     
     def get_activation_correlation(self, cov_matrix):
+        C = cov_matrix.shape[0]
         v = torch.diag(cov_matrix)
         stddev = torch.sqrt(v+1e-8)
         corr_matrix=cov_matrix/stddev[:, None] / stddev[None, :]
@@ -312,7 +314,7 @@ class Net(pl.LightningModule):
         cos_dist_matrix = helper.get_activation_cosine_distance(activations)
         C = cos_dist_matrix.shape[0]
         off_diag = cos_dist_matrix[~torch.eye(C, dtype=bool)]
-        mean_cosine_distance=off_diag.mean.item()
+        mean_cosine_distance=off_diag.mean().item()
         return mean_cosine_distance
 
     def compute_feature_novelty(self):
