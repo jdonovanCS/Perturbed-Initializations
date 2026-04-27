@@ -129,9 +129,9 @@ def train_network(data_module, filters=None, epochs=2, lr=.001, save_path=None, 
     accelerator = "cpu" if torch.cuda.device_count() < 1 else 'gpu'
     # trainer = pl.Trainer(max_epochs=epochs, default_root_dir=save_path, logger=wandb_logger, check_val_every_n_epoch=val_interval, accelerator="gpu", gpus=torch.cuda.device_count(), strategy='dp')
     if torch.cuda.device_count() > 1:
-        trainer = pl.Trainer(callbacks=callbacks,max_epochs=epochs, default_root_dir=save_path, logger=wandb_logger, check_val_every_n_epoch=val_interval, accelerator=accelerator, devices=devices, plugins=DDPPlugin(find_unused_parameters=False))
+        trainer = pl.Trainer(callbacks=callbacks,max_epochs=epochs, default_root_dir=save_path, logger=wandb_logger, check_val_every_n_epoch=val_interval, accelerator=accelerator, log_every_n_steps=1, devices=devices, plugins=DDPPlugin(find_unused_parameters=False))
     else:
-        trainer = pl.Trainer(callbacks=callbacks, max_epochs=epochs, default_root_dir=save_path, logger=wandb_logger, check_val_every_n_epoch=val_interval, accelerator=accelerator)
+        trainer = pl.Trainer(callbacks=callbacks, max_epochs=epochs, default_root_dir=save_path, logger=wandb_logger, check_val_every_n_epoch=val_interval, accelerator=accelerator, log_every_n_steps=1)
     wandb_logger.watch(net, log_graph=False)
     # find_best_lr(trainer, net, data_module)
     # torch.cuda.empty_cache()
