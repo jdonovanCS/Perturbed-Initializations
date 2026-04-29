@@ -209,7 +209,7 @@ class Net(pl.LightningModule):
                 self.log(f'activation_map_cosine_distance{i+1}_afterRELU', self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"], on_step=True, on_epoch=True, batch_size=len(y))
                 # self.log(f'activation_map_cosine_distance{i+1}_afterRELU', mean_cosine_distance, on_step=True, on_epoch=True, batch_size=len(y))
                 
-                return loss
+        return loss
     
     def validation_step(self, val_batch, batch_idx):
         with torch.no_grad():
@@ -363,6 +363,8 @@ class Net(pl.LightningModule):
 
             # layer_totals[layer] = np.abs(np.expand_dims(a, axis=2) - np.expand_dims(a, axis=1)).sum().item()
 
+        if self.diversity == None:
+            return 0
         l = []
         for i in self.activations:
             if type(self.activations[i][0]) != type(np.zeros((1))):

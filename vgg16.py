@@ -155,7 +155,7 @@ class Net(pl.LightningModule):
                 self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"](mean_cosine_distance)
                 self.log(f'activation_map_cosine_distance{i+1}_afterRELU', self.layer_metrics[f"activation_cosine_distance_{i}_afterRELU"], on_step=True, on_epoch=True, batch_size=len(y))
 
-                return loss
+        return loss
     
     def validation_step(self, val_batch, batch_idx):
         with torch.no_grad():
