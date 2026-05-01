@@ -1,6 +1,7 @@
 # from distutils.command.config import config
 import torch
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 import numpy as np
 import cv2
 import randomdatamodule as rd
@@ -700,7 +701,7 @@ def mutate(filters, broad_mutation=False, mr=1.0, dims=None):
         return filters
 
 
-def plot_mean_and_bootstrapped_ci_multiple(input_data = None, title = 'overall', name = "change this", x_label = "x", y_label = "y", x_mult=1, y_mult=1, save_name="", compute_CI=True, maximum_possible=None, show=None, sample_interval=None, legend_loc=None, alpha=1, y=None):
+def plot_mean_and_bootstrapped_ci_multiple(input_data = None, title = 'overall', name = "change this", x_label = "x", y_label = "y", x_mult=1, y_mult=1, save_name="", compute_CI=True, maximum_possible=None, show=None, sample_interval=None, legend_loc=None, alpha=1, y=None, plot_type=None):
     """ 
      
     parameters:  
@@ -720,6 +721,7 @@ def plot_mean_and_bootstrapped_ci_multiple(input_data = None, title = 'overall',
     ax.set_ylabel(y_label) 
     ax.set_title(title) 
     for i in range(len(input_data)): 
+        y=y[i] if (type(y[0]) == np.ndarray or type(y[0])==list) else y
         CIs = [] 
         mean_values = [] 
         for j in range(generations): 
@@ -742,7 +744,13 @@ def plot_mean_and_bootstrapped_ci_multiple(input_data = None, title = 'overall',
             y = range(0, generations)
         if (sample_interval != None):
             y = np.array(y)*sample_interval 
-        ax.plot(y, mean_values, label=name[i], alpha=alpha)
+        if (plot_type == "scatter"):
+            z = np.polyfit(y, mean_values, 1)
+            p = np.poly1d(z)
+            ax.scatter(y, mean_values, label=name[i], alpha=alpha, s=5)
+            ax.plot(y, p(y))
+        else:
+            ax.plot(y, mean_values, label=name[i], alpha=alpha)
         if compute_CI:
             ax.fill_between(y, high, low, alpha=.2) 
         if legend_loc is not None:
@@ -758,6 +766,45 @@ def plot_mean_and_bootstrapped_ci_multiple(input_data = None, title = 'overall',
         plt.savefig('plots/' + save_name)
     if show != None:
         plt.show()
+        
+def create_violin_plot(data, labels, title="Data Distribution", ylabel="Value Range"):
+    """
+    Creates a violin plot for the provided data.
+    
+    Parameters:
+    data: list of arrays/vectors or a 2D array.
+    title: String title for the plot.
+    ylabel: String label for the Y-axis.
+    """
+    # Create the figure and axis
+    fig, ax = plt.subplots(figsize=(3*len(labels), 8))
+    
+    # Plot the violin chart
+    # showmeans/showmedians: toggles statistical markers inside the violin
+    vp = ax.violinplot(data, showmeans=True, showmedians=True)
+    
+    # Set X-axis labels
+    ax.set_xticks(np.arange(1, len(labels) + 1))
+    ax.set_xticklabels(labels)
+    
+     # Generate colors for each violin
+    colors = plt.get_cmap('tab10', len(labels)+5).colors
+    
+    # 'bodies' contains the actual violin shapes
+    for pc, color in zip(vp['bodies'], colors):
+        pc.set_facecolor(color)
+        pc.set_alpha(0.7)
+        
+    legend_elements = [Patch(facecolor=colors[i], label=labels[i]) for i in range(len(labels))]
+    ax.legend(handles=legend_elements, title='Experiments', loc='upper left')
+    
+    # Customizing the appearance
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    
+    # Optional: Adding grid lines for readability
+    # ax.yaxis.grid(True)
+    plt.show()
     
 def log(input):
     if glob_rank == 0:
