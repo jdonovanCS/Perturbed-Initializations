@@ -781,7 +781,10 @@ def create_violin_plot(data, labels, title="Data Distribution", ylabel="Value Ra
     
     # Plot the violin chart
     # showmeans/showmedians: toggles statistical markers inside the violin
-    vp = ax.violinplot(data, showmeans=True, showmedians=True)
+    print(data)
+    arr = np.asanyarray(data)
+    clean_data = np.squeeze(arr).astype(float)
+    vp = ax.violinplot(clean_data.T)#, showmeans=True, showmedians=True)
     
     # Set X-axis labels
     ax.set_xticks(np.arange(1, len(labels) + 1))
@@ -805,6 +808,32 @@ def create_violin_plot(data, labels, title="Data Distribution", ylabel="Value Ra
     # Optional: Adding grid lines for readability
     # ax.yaxis.grid(True)
     plt.show()
+    
+def is_float_string(s):
+    try:
+        float(s)
+        return True
+    except (ValueError, TypeError):
+        return False
+    
+def create_wandb_filters(filter_text, metric="test_acc"):
+    filters={"config.experiment_type": "training", "config.fixed_conv": False, "config.bn": True, "config.dataset": "cifar-100"}
+    for filter_item in filter_text:
+        filter_criteria_list = filter_item.split(":")[1].replace('[','').replace(']','').split(",")
+        if all(item.isdigit() for item in filter_criteria_list):
+            filter_criteria_list = [int(i) for i in filter_criteria_list]
+        elif all(is_float_string(item) for item in filter_criteria_list):
+            filter_criteria_list = [float(i) for i in filter_criteria_list]
+        elif all(item.strip().lower() in ["true", "false"] for item in filter_criteria_list):
+            filter_criteria_list = [i.lower() == "true" for i in filter_criteria_list]
+        filters["config."+str(filter_item).split(":")[0]] = {"$in": filter_criteria_list}
+    filters["summary_metrics."+str(metric)] = {"$nin": [None, "null"]}
+    return filters
+
+def get_wandb_runs(filters):
+    api = wandb.Api()
+    runs = api.runs("perturbed-initializations", filters=filters)
+    return runs
     
 def log(input):
     if glob_rank == 0:
